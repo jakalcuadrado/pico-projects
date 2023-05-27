@@ -1,0 +1,2 @@
+#pragma code_page(65001)
+1 /* CREATEPROCESS_MANIFEST_RESOURCE_ID */ 24 /* RT_MANIFEST */ "D:/Development/MarkApp/RushBoard/Firmware/pico-projects/build/pioasm/CMakeFiles/pioasm.dir/embed.manifest"

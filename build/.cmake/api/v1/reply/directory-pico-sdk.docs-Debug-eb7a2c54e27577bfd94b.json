@@ -1,0 +1,14 @@
+{
+	"backtraceGraph" : 
+	{
+		"commands" : [],
+		"files" : [],
+		"nodes" : []
+	},
+	"installers" : [],
+	"paths" : 
+	{
+		"build" : "pico-sdk/docs",
+		"source" : "D:/Development/MarkApp/RushBoard/Firmware/pico-sdk/docs"
+	}
+}
