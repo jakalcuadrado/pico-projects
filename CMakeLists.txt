@@ -18,9 +18,10 @@ add_executable(
 
 # Tell CMake where to find other source code
 add_subdirectory(
-    lib/no-OS-FatFS-SD-SPI-RPi-Pico/FatFs_SPI
+    lib/no-OS-FatFS-SD-SPI-RPi-Pico/FatFs_SPI 
     #lib/SIM8XX 
     build)
+add_subdirectory(lib/ds18b20)
 
 # Create map/bin/hex/uf2 files
 pico_add_extra_outputs(${PROJECT_NAME})
@@ -29,6 +30,7 @@ pico_add_extra_outputs(${PROJECT_NAME})
 target_link_libraries(${PROJECT_NAME} 
     pico_stdlib
     FatFs_SPI
+    pico_one_wire
 )
 
 # Enable usb output, disable uart output

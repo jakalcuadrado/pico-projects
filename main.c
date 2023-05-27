@@ -7,6 +7,17 @@
 #include <stdio.h>
 #include "pico/stdlib.h"
 #include "string.h"
+enum State
+{
+    State_Init,
+    State_Get_Time,
+    State_Read_Sensors,
+    State_Treat_data,
+    State_Wait,
+    State_Reset
+};
+
+enum State current_State=State_Init;
 
 #include "hardware/uart.h"
 #define UART_ID uart0
@@ -27,6 +38,7 @@
 #define RETURN_ERROR_TO_RESET 2
 
 #include "hardware/watchdog.h"
+//#include "ds18b20/api/one_wire.h"
 
 char getData()
 {
@@ -84,7 +96,7 @@ char simxxx_send_command(char command[], char expected[])
         }
         tries--;
     }
-    printf("RETURN_ERROR, tries: %d msj: %s\r\n", tries, input);
+    printf("RETURN_ERROR, msj: %s\r\n", input);
 
     
     return RETURN_ERROR;
@@ -95,54 +107,52 @@ char simxxx_read_time(char command[], int bit_possition)
 
     // wdt_reset();
     char input[70];
-    int tries = 10;
-    while (input[bit_possition]!='1')
-    {
-        uart_puts(UART_ID, command);
-        printf(command);
+    uart_puts(UART_ID, command);
+    printf("\r\n");
+    printf(command);
+    printf("\r\n");
 
         int i = 0;
 
-        while (true) // TimeOutSim8xx.flag_counts != FLAG_OK)
-        {
-            // watchdog_reset();
-            input[i] = uart_getc(UART_ID);
+    while (true) // TimeOutSim8xx.flag_counts != FLAG_OK)
+    {
+        // watchdog_reset();
+        input[i] = uart_getc(UART_ID);
 
-            if (input[i] == '\n')
-                break;
-            i++;
-            if (i == 70)
-                break;
-        }
-        /*
-        if (TimeOutSim8xx.flag_counts == FLAG_OK)
-        {
-            usb_printf(KRED "TimeOut SIM!!\r\n" KNRM);
-            watchdog_enable();
-            return RETURN_ERROR;
-        }
-        */
-
-        printf("msj: %s\r\n", input);
-
-        printf("char12: %c\r\n", input[bit_possition]);
-        
-        watchdog_update();
-        sleep_ms(30000);
-        printf("tries: %d \r\n", tries);
-        tries--;
+        if (input[i] == '\n')
+            break;
+        i++;
+        if (i == 70)
+            break;
     }
-    printf("RETURN_ERROR, tries: %d msj: %s\r\n", tries, input);
+    /*
+    if (TimeOutSim8xx.flag_counts == FLAG_OK)
+    {
+        usb_printf(KRED "TimeOut SIM!!\r\n" KNRM);
+        watchdog_enable();
+        return RETURN_ERROR;
+    }
+    */
 
-    return RETURN_ERROR;
+    printf("msj: %s\r\n", input);
+
+    printf("char12: %c\r\n", input[bit_possition]);
+
+    if (input[bit_possition] != '1')
+    {
+        printf("RETURN_ERROR, msj: %s\r\n",  input);
+        return RETURN_ERROR;
+    }     
+    
+    printf("RETURN_OK, msj: %s\r\n",  input);
+
+    return RETURN_OK;
 }
 
 bool repeating_timer_callback(struct repeating_timer *t)
 {
     printf("!!!!!Main Timer!!!!!\r\n");
-    simxxx_send_command("AT\r\n", "OK");
-    //printf("Repeat at %lld\n", time_us_64());
-    simxxx_read_time("AT+CGNSINF\r\n", 12);
+    current_State = State_Get_Time;
     return true;
 }
 
@@ -201,11 +211,8 @@ int main()
     uart_puts(UART_ID, " Hello, UART!\n");
     uart_puts(UART_ID, "55555");
 
-    simxxx_send_command("AT\r\n", "OK");
-    simxxx_send_command("AT\r\n", "OK");
-    simxxx_send_command("AT\r\n", "OK");
-    simxxx_send_command("AT+CGNSPWR=1\r\n", "OK");
-    simxxx_read_time("AT+CGNSINF\r\n",12);
+    
+    
 
     struct repeating_timer timer_sampling;
     add_repeating_timer_ms(30000, repeating_timer_callback, NULL, &timer_sampling);
@@ -213,7 +220,44 @@ int main()
     // Wait for user to press 'enter' to continue
     printf("\r\nSD card test. Press 'enter' to start.\r\n");
     while (true)
-    {}
+    {
+        if(current_State ==State_Init){
+            printf("\r\nState INIT\r\n");
+
+            simxxx_send_command("AT\r\n", "OK");
+            simxxx_send_command("AT\r\n", "OK");
+            simxxx_send_command("AT\r\n", "OK");
+            simxxx_send_command("AT+CGNSPWR=1\r\n", "OK");
+            current_State = State_Get_Time;
+        }
+
+        if (current_State == State_Get_Time)
+        {
+            printf("\r\nState GET TIME\r\n");
+            current_State = State_Wait;
+            if(simxxx_read_time("AT+CGNSINF\r\n", 12)){
+                current_State = State_Read_Sensors;
+            }
+               
+        }
+
+        if (current_State == State_Read_Sensors)
+        {
+            printf("\r\nState Read Sensors\r\n");
+            current_State = State_Wait;
+           
+        }
+        
+
+        if (current_State == State_Wait)
+        {
+            printf("\r\nState WAIT\r\n");
+            sleep_ms(5000);
+        }
+        
+        
+
+    }
     while (true)
     {
         buf[0] = getchar();
