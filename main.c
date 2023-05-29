@@ -6,7 +6,10 @@
 
 #include <stdio.h>
 #include "pico/stdlib.h"
+#include "board_definitions.h"
 #include "string.h"
+#include "hw_config.h"
+
 enum State
 {
     State_Init,
@@ -38,7 +41,21 @@ enum State current_State=State_Init;
 #define RETURN_ERROR_TO_RESET 2
 
 #include "hardware/watchdog.h"
-//#include "ds18b20/api/one_wire.h"
+#include "lib/ds18b20/ds18b20.h"
+#include "lib/ds18b20/romsearch.h"
+sensor_t sensor_temperature_array_1;
+//sensor_t sensor_temperature_array_2;
+
+uint8_t romcnt_array_1 = 0;     // No of temperature sensor found
+uint8_t romcnt_array_2 = 0;     // No of temperature sensor found
+uint8_t roms_array_1[40] = {0}; // temperature sensor name.
+uint8_t roms_array_2[40] = {0}; // temperature sensor name.
+
+// Prototype functions
+void Sense_State_Function();
+
+//Global variables
+mesuared_data mesuaredData;
 
 char getData()
 {
@@ -75,7 +92,7 @@ char simxxx_send_command(char command[], char expected[])
         /*
         if (TimeOutSim8xx.flag_counts == FLAG_OK)
         {
-            usb_printf(KRED "TimeOut SIM!!\r\n" KNRM);
+            printf(KRED "TimeOut SIM!!\r\n" KNRM);
             watchdog_enable();
             return RETURN_ERROR;
         }
@@ -128,7 +145,7 @@ char simxxx_read_time(char command[], int bit_possition)
     /*
     if (TimeOutSim8xx.flag_counts == FLAG_OK)
     {
-        usb_printf(KRED "TimeOut SIM!!\r\n" KNRM);
+        printf(KRED "TimeOut SIM!!\r\n" KNRM);
         watchdog_enable();
         return RETURN_ERROR;
     }
@@ -165,6 +182,8 @@ int main()
     int ret;
     char buf[100];
     char filename[] = "test00.txt";
+
+    sensor_temperature_array_1.pin = 16;
     
 
     // Initialize chosen serial port
@@ -229,6 +248,7 @@ int main()
             simxxx_send_command("AT\r\n", "OK");
             simxxx_send_command("AT+CGNSPWR=1\r\n", "OK");
             current_State = State_Get_Time;
+            current_State = State_Read_Sensors;
         }
 
         if (current_State == State_Get_Time)
@@ -243,9 +263,12 @@ int main()
 
         if (current_State == State_Read_Sensors)
         {
+            uint32_t status=0;
             printf("\r\nState Read Sensors\r\n");
-            current_State = State_Wait;
-           
+            //save_and_disable_interrupts();
+            Sense_State_Function();
+            //restore_interrupts(status);
+            current_State = State_Read_Sensors;
         }
         
 
@@ -365,4 +388,129 @@ int main()
     {
         sleep_ms(1000);
     }
+}
+
+void Sense_State_Function()
+{
+    float voltage, current;
+    int16_t *result_ptr = mesuaredData.temperature_array;
+    uint8_t error = 1;
+    uint8_t error_1 = 1;
+    uint8_t error_2 = 1;
+    uint8_t temp_tries = 3;
+
+    /// Get river level in main sensor
+    //mesuaredData.level_int = MB7040_get_avg_measure(&i2c_US_main, ADD_I2C_US_MAIN);
+    //printf("Measure in main sensor: %d cm \r\n", mesuaredData.level_int);
+
+    //mesuaredData.level_10deg_int = 0;
+
+    // Sensors detection.
+    if (onewireInit(&sensor_temperature_array_1))
+    {
+        printf("Sensor Detected!!!!! \r\n");
+    }
+    
+    onewireInit(&sensor_temperature_array_1);
+
+        while (error_1 != DS18B20_ERROR_OK && temp_tries != 0)
+    {
+        temp_tries--;
+      
+        error_1 = ds18b20search(&sensor_temperature_array_1, &romcnt_array_1, roms_array_1, 40);
+        
+    }
+
+    if (error_1 == DS18B20_ERROR_OK || error_2 == DS18B20_ERROR_OK)
+    {
+        printf("\r\n");
+        printf("%d Sensor found!!!\r\n", romcnt_array_1 + romcnt_array_2);
+        printf("Array one \r\n");
+
+        for (int j = 0; j < romcnt_array_1; j++)
+        {
+            for (int i = 0; i < 8; i++)
+            {
+                printf("%02X", roms_array_1[i + j * 8]);
+            }
+
+            printf("\r\n");
+        }
+
+        printf("Array two \r\n");
+        for (int j = 0; j < romcnt_array_2; j++)
+        {
+            for (int i = 0; i < 8; i++)
+            {
+                printf("%02X", roms_array_2[i + j * 8]);
+            }
+
+            printf("\r\n");
+        }
+
+        printf("\r\n");
+    }
+    else if (error == ONEWIRE_ERROR_COMM)
+    {
+        printf("error COMM \r\n");
+    }
+    
+
+    for (int i = 0; i < romcnt_array_1; i++)
+    {
+        error_1 |= ds18b20convert(&sensor_temperature_array_1, roms_array_1 + i * 8);
+    }
+
+    
+    if (error_1 == DS18B20_ERROR_OK || error_2 == DS18B20_ERROR_OK)
+    {
+        printf("Sensors Ready \r\n");
+    }
+    else
+    {
+
+        printf("Sensors convert error \r\n");
+    }
+
+    // Delay (sensor needs time to perform conversion)
+    sleep_ms(1000);
+    
+
+    printf("doing for \r\n");
+    temp_tries = 3;
+    for (int i = 0; i < romcnt_array_1; i++)
+    {
+       
+        error = ds18b20read(&sensor_temperature_array_1, roms_array_1 + i * 8, result_ptr++);
+       
+        if (error == DS18B20_ERROR_OK)
+        {
+            mesuaredData.temperature_sensor_id[i] = roms_array_1[i * 8 + 7];
+
+            printf("Sensor %02X value: %d \r\n", mesuaredData.temperature_sensor_id[i], mesuaredData.temperature_array[i]);
+        }
+        else if (error == DS18B20_ERROR_PULL)
+        {
+            printf("Sensor %02X no read \r\n", roms_array_1[i * 8 + 7]);
+            if (temp_tries != 0)
+            {
+                i--;
+                result_ptr--;
+                temp_tries--;
+            }
+        }
+        else if (error == ONEWIRE_ERROR_COMM)
+        {
+            printf("Sensor %02X no read comm \r\n", roms_array_1[i * 8 + 7]);
+            if (temp_tries != 0)
+            {
+                i--;
+                result_ptr--;
+                temp_tries--;
+            }
+        }
+    }
+    temp_tries = 3;
+
+
 }

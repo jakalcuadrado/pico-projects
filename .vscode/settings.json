@@ -2,6 +2,9 @@
     "files.associations": {
         "stdlib.h": "c",
         "sd_card.h": "c",
-        "cstdio": "c"
+        "cstdio": "c",
+        "one_wire.h": "c",
+        "ds18b20.h": "c",
+        "onewire.h": "c"
     }
 }
