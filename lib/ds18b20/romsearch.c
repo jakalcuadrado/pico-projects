@@ -74,7 +74,7 @@ uint8_t ds18b20search( sensor_t * sensor, uint8_t *romcnt, uint8_t *roms, uint16
 				case 0:
 					// Check if there are older junction bits set
 					// If there are older bits set, junction value
-					// shall be at least equal to i*2
+					// shall be at least equal to i*2
 					if ( junction >= ( i << 1 ) )
 					// if ( junction >= ( 2 << i ) )
 					{

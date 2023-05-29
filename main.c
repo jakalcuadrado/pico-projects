@@ -406,12 +406,11 @@ void Sense_State_Function()
     //mesuaredData.level_10deg_int = 0;
 
     // Sensors detection.
-    if (onewireInit(&sensor_temperature_array_1))
+    if (onewireInit(&sensor_temperature_array_1)==ONEWIRE_ERROR_OK)
     {
         printf("Sensor Detected!!!!! \r\n");
     }
     
-    onewireInit(&sensor_temperature_array_1);
 
         while (error_1 != DS18B20_ERROR_OK && temp_tries != 0)
     {

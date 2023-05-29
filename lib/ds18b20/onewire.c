@@ -20,7 +20,7 @@
 uint8_t onewireInit( sensor_t * sensor )
 {
 	// This will return false if no devices are present on the data bus
-	bool presence = false;
+	uint8_t status = ONEWIRE_ERROR_COMM;
 	gpio_init(sensor->pin);
 	gpio_set_dir(sensor->pin, GPIO_OUT);
 	gpio_put(sensor->pin, false); // bring low for 480us
@@ -30,40 +30,29 @@ uint8_t onewireInit( sensor_t * sensor )
 	if (!gpio_get(sensor->pin))
 	{
 		// see if any devices are pulling the data line low
-		presence = true;
+		status = ONEWIRE_ERROR_OK;
 	}
 	sleep_us(410);
-	return presence;
+	return status;
 }
 
 //! Sends a single bit over the 1wire bus
 uint8_t onewireWriteBit(sensor_t * sensor, uint8_t bit )
 {
-	//uint8_t sreg = SREG;
-
-	#ifdef ONEWIRE_AUTO_CLI
-		//cli( );
-	#endif
-	gpio_put(sensor->pin,true);
 	gpio_set_dir(sensor->pin, GPIO_OUT);
-	gpio_put(sensor->pin,false);
-	//*port |= mask; //Write 1 to output
-	//*direction |= mask;
-	//*port &= ~mask; //Write 0 to output
-
-	if ( bit == 0 ) sleep_us( 65 );
-	else sleep_us(10);
-	
-	gpio_set_dir(sensor->pin, GPIO_IN);
-	//*port |= mask;
-
-	if ( bit == 0 ) sleep_us(5);
-	else sleep_us( 55 );
-
-
-	//SREG = sreg;
-
-	return bit != 0;
+	gpio_put(sensor->pin, false);
+	sleep_us(3); // (spec 1-15us)
+	if (bit)
+	{
+		gpio_put(sensor->pin, true);
+		sleep_us(55);
+	}
+	else
+	{
+		sleep_us(60); // (spec 60-120us)
+		gpio_put(sensor->pin, true);
+		sleep_us(5); // allow bus to float high before next bit_out
+	}
 }
 
 //! Transmits a byte over 1wire bus
@@ -86,24 +75,13 @@ void onewireWrite(sensor_t * sensor, uint8_t data )
 uint8_t onewireReadBit( sensor_t * sensor)
 {
 	uint8_t bit = 0;
-	//uint8_t sreg = SREG;
-
-	#ifdef ONEWIRE_AUTO_CLI
-		//cli( );
-	#endif
-	gpio_put(sensor->pin,false);
 	gpio_set_dir(sensor->pin, GPIO_OUT);
-
-	//*port |= mask; //Write 1 to output
-	//*direction |= mask;
-	//*port &= ~mask; //Write 0 to output
-	sleep_us(3);
+	gpio_put(sensor->pin, false);
+	sleep_us(3); // (spec 1-15us)
 	gpio_set_dir(sensor->pin, GPIO_IN);
-	//*direction &= ~mask; //Set port to input
-	bit =(gpio_get(sensor->pin) != 0 );
-	//bit = ( ( *portin & mask ) != 0 ); //Read input
-	sleep_us( 60 );
-	//SREG = sreg;
+	sleep_us(3); // (spec read within 15us)
+	bit = gpio_get(sensor->pin);
+	sleep_us(45);
 
 	return bit;
 }
