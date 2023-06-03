@@ -3,7 +3,7 @@
 
 #include "pico/stdlib.h"
 
-#define TEMPERATURE_EXPECTED_SENSORS 1
+#define TEMPERATURE_EXPECTED_SENSORS 10
 
     typedef struct mesuared_data mesuared_data;
 struct mesuared_data

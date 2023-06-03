@@ -166,27 +166,23 @@ uint8_t ds18b20csp( sensor_t * sensor , uint8_t *rom )
 //! Read temperature
 uint8_t ds18b20read( sensor_t * sensor , uint8_t *rom, int16_t *temperature )
 {
-	//Read temperature from DS18B20
-	//Note: returns actual temperature * 16
+	// Read temperature from DS18B20
+	// Note: returns actual temperature * 16
 
 	uint8_t sp[9];
 	uint8_t ec = 0;
 
-	//Communication, pull-up, CRC checks happen here
-	ec = ds18b20rsp( sensor , rom, sp );
-	
-	//Get temperature from received data
-	*temperature = (int16_t)( sp[1] << 8 ) + sp[0];
-			
+	// Communication, pull-up, CRC checks happen here
+	ec = ds18b20rsp(sensor, rom, sp);
 
-	if ( ec != DS18B20_ERROR_OK )
+	if (ec != DS18B20_ERROR_OK)
 	{
-		//*temperature = 0;
+		*temperature = 0;
 		return ec;
 	}
 
-	//Get temperature from received data
-	*temperature = (int16_t)( sp[1] << 8 ) + sp[0];
+	// Get temperature from received data
+	*temperature = (int16_t)(sp[1] << 8) + sp[0];
 
 	return DS18B20_ERROR_OK;
 }
