@@ -8,6 +8,7 @@
 #include "pico/stdlib.h"
 #include "board_definitions.h"
 #include "string.h"
+#include "stdlib.h"
 #include "hw_config.h"
 
 enum State
@@ -16,6 +17,7 @@ enum State
     State_Get_Time,
     State_Read_Sensors,
     State_Treat_data,
+    State_Save_data,
     State_Wait,
     State_Reset
 };
@@ -23,7 +25,7 @@ enum State
 enum State current_State=State_Init;
 
 #include "hardware/uart.h"
-#define UART_ID uart0
+#define UART_SIM uart0
 #define BAUD_RATE 115200
 #define DATA_BITS 8
 #define STOP_BITS 1
@@ -57,18 +59,11 @@ void Sense_State_Function();
 //Global variables
 mesuared_data mesuaredData;
 
-char getData()
-{
-    uint8_t data;
-    data = 0;
-    data = uart_getc(UART_ID);
-    return data;
-}
 
 char simxxx_send_command(char command[], char expected[])
 {
 
-    uart_puts(UART_ID, command);
+    uart_puts(UART_SIM, command);
     printf(command);
     // wdt_reset();
     char input[70];
@@ -81,7 +76,7 @@ char simxxx_send_command(char command[], char expected[])
         while (true)//TimeOutSim8xx.flag_counts != FLAG_OK)
         {
             // watchdog_reset();
-            input[i] = uart_getc(UART_ID);
+            input[i] = uart_getc(UART_SIM);
 
             if (input[i] == '\n')
                 break;
@@ -124,7 +119,7 @@ char simxxx_read_time(char command[], int bit_possition)
 
     // wdt_reset();
     char input[70];
-    uart_puts(UART_ID, command);
+    uart_puts(UART_SIM, command);
     printf("\r\n");
     printf(command);
     printf("\r\n");
@@ -134,7 +129,7 @@ char simxxx_read_time(char command[], int bit_possition)
     while (true) // TimeOutSim8xx.flag_counts != FLAG_OK)
     {
         // watchdog_reset();
-        input[i] = uart_getc(UART_ID);
+        input[i] = uart_getc(UART_SIM);
 
         if (input[i] == '\n')
             break;
@@ -162,6 +157,32 @@ char simxxx_read_time(char command[], int bit_possition)
     }     
     
     printf("RETURN_OK, msj: %s\r\n",  input);
+
+    char subbuff[4];
+    memcpy(subbuff, &input[14], 4);
+    mesuaredData.year = atoi(subbuff);
+
+    memcpy(subbuff, &input[18], 2);
+    subbuff[2] = '\0';
+    mesuaredData.month = atoi(subbuff);
+
+    memcpy(subbuff, &input[20], 2);
+    subbuff[2] = '\0';
+    mesuaredData.day = atoi(subbuff);
+
+    memcpy(subbuff, &input[22], 2);
+    subbuff[2] = '\0';
+    mesuaredData.hour = atoi(subbuff);
+
+    memcpy(subbuff, &input[24], 2);
+    subbuff[2] = '\0';
+    mesuaredData.minute = atoi(subbuff);
+
+    memcpy(subbuff, &input[26], 2);
+    subbuff[2] = '\0';
+    mesuaredData.second = atoi(subbuff);
+
+    printf("Current Time from GSM: %02d/%02d/%04d %02d:%02d:%02d+0\r\n", mesuaredData.day, mesuaredData.month, mesuaredData.year, mesuaredData.hour, mesuaredData.minute, mesuaredData.second);
 
     return RETURN_OK;
 }
@@ -200,7 +221,7 @@ int main()
     }
 
     // Set up our UART with the required speed.
-    uart_init(UART_ID, BAUD_RATE);
+    uart_init(UART_SIM, BAUD_RATE);
 
     // Set the TX and RX pins by using the function select on the GPIO
     // Set datasheet for more information on function select
@@ -227,8 +248,8 @@ int main()
         }
     }
     // Send out a string, with CR/LF conversions
-    uart_puts(UART_ID, " Hello, UART!\n");
-    uart_puts(UART_ID, "55555");
+    uart_puts(UART_SIM, " Hello, UART!\n");
+    uart_puts(UART_SIM, "55555");
 
     
     
@@ -248,7 +269,6 @@ int main()
             simxxx_send_command("AT\r\n", "OK");
             simxxx_send_command("AT+CGNSPWR=1\r\n", "OK");
             current_State = State_Get_Time;
-            current_State = State_Read_Sensors;
         }
 
         if (current_State == State_Get_Time)
@@ -267,10 +287,10 @@ int main()
             printf("\r\nState Read Sensors\r\n");
             //save_and_disable_interrupts();
             Sense_State_Function();
+            printf("Current Time from GSM: %02d/%02d/%04d %02d:%02d:%02d+0\r\n", mesuaredData.day, mesuaredData.month, mesuaredData.year, mesuaredData.hour, mesuaredData.minute, mesuaredData.second);
             //restore_interrupts(status);
-            current_State = State_Read_Sensors;
+            current_State = State_Wait;
         }
-        
 
         if (current_State == State_Wait)
         {
