@@ -58,6 +58,7 @@ void Sense_State_Function();
 
 //Global variables
 mesuared_data mesuaredData;
+char payload[150];
 
 
 char simxxx_send_command(char command[], char expected[])
@@ -205,7 +206,21 @@ int main()
     char filename[] = "test00.txt";
 
     sensor_temperature_array_1.pin = 16;
-    
+
+    mesuaredData.level = 0;
+    mesuaredData.temperature_array[0] = 0;
+    mesuaredData.temperature_array[1] = 0;
+    mesuaredData.temperature_array[2] = 0;
+    mesuaredData.temperature_array[3] = 0;
+    mesuaredData.temperature_array[4] = 0;
+    mesuaredData.temperature_array[5] = 0;
+    mesuaredData.temperature_array[6] = 0;
+    mesuaredData.temperature_array[7] = 0;
+    mesuaredData.temperature_array[8] = 0;
+    mesuaredData.temperature_array[9] = 0;
+
+
+   
 
     // Initialize chosen serial port
     stdio_init_all();
@@ -228,37 +243,35 @@ int main()
     gpio_set_function(UART_TX_PIN, GPIO_FUNC_UART);
     gpio_set_function(UART_RX_PIN, GPIO_FUNC_UART);
 
-    // Wait for user to press 'enter' to continue
-    printf("\r\nPress 'enter' to start.\r\n");
-    while (true)
-    {
-        buf[0] = getchar();
-        if ((buf[0] == '\r') || (buf[0] == '\n'))
-        {
-            break;
-        }
-    }
-    printf("\r\nUart Test. Press 'enter' to start.\r\n");
-    while (true)
-    {
-        buf[0] = getchar();
-        if ((buf[0] == '\r') || (buf[0] == '\n'))
-        {
-            break;
-        }
-    }
-    // Send out a string, with CR/LF conversions
-    uart_puts(UART_SIM, " Hello, UART!\n");
-    uart_puts(UART_SIM, "55555");
+    
 
-    
-    
+    printf("\r\nRushboard Init.\r\n");
+
+
+    sprintf(payload, "{\"date\":\"%02d/%02d/%04d %02d:%02d:%02d\",\"level\":%d,\"T00\":%d,\"T01\":%d,\"T02\":%d,\"T03\":%d,\"T04\":%d,\"T05\":%d,\"T06\":%d,\"T07\":%d,\"T08\":%d,\"T09\":%d}\r\n",
+            mesuaredData.day, mesuaredData.month, mesuaredData.year, mesuaredData.hour, mesuaredData.minute, mesuaredData.second,
+            mesuaredData.level,
+            mesuaredData.temperature_array[0],
+            mesuaredData.temperature_array[1],
+            mesuaredData.temperature_array[2],
+            mesuaredData.temperature_array[3],
+            mesuaredData.temperature_array[4],
+            mesuaredData.temperature_array[5],
+            mesuaredData.temperature_array[6],
+            mesuaredData.temperature_array[7],
+            mesuaredData.temperature_array[8],
+            mesuaredData.temperature_array[9]);
+    printf(payload);
+
+    // Wait to turn on
+    sleep_ms(5000);
 
     struct repeating_timer timer_sampling;
     add_repeating_timer_ms(30000, repeating_timer_callback, NULL, &timer_sampling);
-    //watchdog_enable(60000, 1);
-    // Wait for user to press 'enter' to continue
-    printf("\r\nSD card test. Press 'enter' to start.\r\n");
+    // watchdog_enable(60000, 1);
+
+
+
     while (true)
     {
         if(current_State ==State_Init){
@@ -283,14 +296,82 @@ int main()
 
         if (current_State == State_Read_Sensors)
         {
+            printf("\r\nState Read Sensors\r\n");
             uint32_t status=0;
             printf("\r\nState Read Sensors\r\n");
             //save_and_disable_interrupts();
             Sense_State_Function();
             printf("Current Time from GSM: %02d/%02d/%04d %02d:%02d:%02d+0\r\n", mesuaredData.day, mesuaredData.month, mesuaredData.year, mesuaredData.hour, mesuaredData.minute, mesuaredData.second);
             //restore_interrupts(status);
-            current_State = State_Wait;
+            current_State = State_Save_data;
         }
+
+        if (current_State== State_Save_data)
+        {
+            printf("\r\nState Save Data\r\n");
+            cancel_repeating_timer(&timer_sampling);
+
+            sprintf(payload, "{\"date\":\"%02d/%02d/%04d %02d:%02d:%02d\",\"level\":%d,\"T00\":%d,\"T01\":%d,\"T02\":%d,\"T03\":%d,\"T04\":%d,\"T05\":%d,\"T06\":%d,\"T07\":%d,\"T08\":%d,\"T09\":%d}\r\n",
+                    mesuaredData.day, mesuaredData.month, mesuaredData.year, mesuaredData.hour, mesuaredData.minute, mesuaredData.second,
+                    mesuaredData.level,
+                    mesuaredData.temperature_array[0],
+                    mesuaredData.temperature_array[1],
+                    mesuaredData.temperature_array[2],
+                    mesuaredData.temperature_array[3],
+                    mesuaredData.temperature_array[4],
+                    mesuaredData.temperature_array[5],
+                    mesuaredData.temperature_array[6],
+                    mesuaredData.temperature_array[7],
+                    mesuaredData.temperature_array[8],
+                    mesuaredData.temperature_array[9]);
+            printf(payload);
+            
+
+            // Initialize SD card
+            if (!sd_init_driver())
+            {
+                printf("ERROR: Could not initialize SD card\r\n");
+            }
+            // Mount drive
+            fr = f_mount(&fs, "0:", 1);
+            if (fr != FR_OK)
+            {
+                printf("ERROR: Could not mount filesystem (%d)\r\n", fr);
+            }
+
+            // Open file for writing ()
+            fr = f_open(&fil, filename, FA_WRITE | FA_OPEN_APPEND);
+            if (fr != FR_OK)
+            {
+                printf("ERROR: Could not open file (%d)\r\n", fr);
+               
+            }
+
+            // Write something to file
+            ret = f_printf(&fil, payload);
+            if (ret < 0)
+            {
+                printf("ERROR: Could not write to file (%d)\r\n", ret);
+                f_close(&fil);
+                
+            }
+
+            // Close file
+            fr = f_close(&fil);
+            if (fr != FR_OK)
+            {
+                printf("ERROR: Could not close file (%d)\r\n", fr);
+                
+            }
+
+            // Unmount drive
+            f_unmount("0:");
+
+            add_repeating_timer_ms(30000, repeating_timer_callback, NULL, &timer_sampling);
+
+            current_State=State_Wait;
+        }
+        
 
         if (current_State == State_Wait)
         {
@@ -301,113 +382,9 @@ int main()
         
 
     }
-    while (true)
-    {
-        buf[0] = getchar();
-        if ((buf[0] == '\r') || (buf[0] == '\n'))
-        {
-            break;
-        }
-    }
+    
 
-    // Initialize SD card
-    if (!sd_init_driver())
-    {
-        printf("ERROR: Could not initialize SD card\r\n");
-        while (true)
-            ;
-    }
-
-    // Mount drive
-    fr = f_mount(&fs, "0:", 1);
-    if (fr != FR_OK)
-    {
-        printf("ERROR: Could not mount filesystem (%d)\r\n", fr);
-        while (true)
-            ;
-    }
-
-    // Open file for writing ()
-    fr = f_open(&fil, filename, FA_WRITE | FA_OPEN_APPEND);
-    if (fr != FR_OK)
-    {
-        printf("ERROR: Could not open file (%d)\r\n", fr);
-        while (true)
-            ;
-    }
-
-    // Write something to file
-    ret = f_printf(&fil, "This is another test\r\n");
-    if (ret < 0)
-    {
-        printf("ERROR: Could not write to file (%d)\r\n", ret);
-        f_close(&fil);
-        while (true)
-            ;
-    }
-
-    ret = f_printf(&fil, "of writing to an SD card.\r\n");
-    if (ret < 0)
-    {
-        printf("ERROR: Could not write to file (%d)\r\n", ret);
-        f_close(&fil);
-        while (true)
-            ;
-    }
-
-    ret = f_printf(&fil, "A successor to the programming language B, C was originally developed at Bell Labs by Ritchie between 1972 and 1973 to construct utilities running on Unix. It was applied to re-implementing the kernel of the Unix operating system.[8] During the 1980s, C gradually gained popularity. It has become one of the most widely used programming languages,[9][10] with C compilers available for practically all modern computer architectures and operating systems. C has been standardized by ANSI since 1989 (ANSI C) and by the International Organization for Standardization (ISO).C is an imperative procedural language, supporting structured programming, lexical variable scope and recursion, with a static type system. It was designed to be compiled to provide low-level access to memory and language constructs that map efficiently to machine instructions, all with minimal runtime support. Despite its low-level capabilities, the language was designed to encourage cross-platform programming. A standards-compliant C program written with portability in mind can be compiled for a wide variety of computer platforms and operating systems with few changes to its source code.[11] Since 2000, C has consistently ranked among the top two languages in the TIOBE index, a measure of the popularity of programming languages.[12]\r\n");
-    if (ret < 0)
-    {
-        printf("ERROR: Could not write to file (%d)\r\n", ret);
-        f_close(&fil);
-        while (true)
-            ;
-    }
-
-    // Close file
-    fr = f_close(&fil);
-    if (fr != FR_OK)
-    {
-        printf("ERROR: Could not close file (%d)\r\n", fr);
-        while (true)
-            ;
-    }
-
-    // Open file for reading
-    fr = f_open(&fil, filename, FA_READ);
-    if (fr != FR_OK)
-    {
-        printf("ERROR: Could not open file (%d)\r\n", fr);
-        while (true)
-            ;
-    }
-
-    // Print every line in file over serial
-    printf("Reading from file '%s':\r\n", filename);
-    printf("---\r\n");
-    while (f_gets(buf, sizeof(buf), &fil))
-    {
-        printf(buf);
-    }
-    printf("\r\n---\r\n");
-
-    // Close file
-    fr = f_close(&fil);
-    if (fr != FR_OK)
-    {
-        printf("ERROR: Could not close file (%d)\r\n", fr);
-        while (true)
-            ;
-    }
-
-    // Unmount drive
-    f_unmount("0:");
-
-    // Loop forever doing nothing
-    while (true)
-    {
-        sleep_ms(1000);
-    }
+        
 }
 
 void Sense_State_Function()
