@@ -60,10 +60,23 @@ void Sense_State_Function();
 mesuared_data mesuaredData;
 char payload[150];
 
+void simxxx_powerUp()
+{
+    gpio_init(6);
+    gpio_set_dir(6, GPIO_OUT);
+    gpio_put(6, false);
+
+    gpio_put(6, true);
+    sleep_ms(2000);
+    gpio_put(6, false);
+    sleep_ms(2000);
+    sleep_ms(5000);
+    sleep_ms(5000);
+}
 
 char simxxx_send_command(char command[], char expected[])
 {
-
+      
     uart_puts(UART_SIM, command);
     printf(command);
     // wdt_reset();
@@ -73,9 +86,10 @@ char simxxx_send_command(char command[], char expected[])
     {
 
         int i = 0;
-
-        while (true)//TimeOutSim8xx.flag_counts != FLAG_OK)
+        sleep_ms(500);
+        while (uart_is_readable(UART_SIM)) // TimeOutSim8xx.flag_counts != FLAG_OK)
         {
+            
             // watchdog_reset();
             input[i] = uart_getc(UART_SIM);
 
@@ -95,6 +109,7 @@ char simxxx_send_command(char command[], char expected[])
         */
 
         // wdt_reset();
+        
         input[i] = 0;
         if (strstr(input, expected))
         {
@@ -125,15 +140,16 @@ char simxxx_read_time(char command[], int bit_possition)
     printf(command);
     printf("\r\n");
 
-        int i = 0;
+    int i = 0;
+    sleep_ms(100);
 
-    while (true) // TimeOutSim8xx.flag_counts != FLAG_OK)
+    while (uart_is_readable(UART_SIM)) // TimeOutSim8xx.flag_counts != FLAG_OK)
     {
         // watchdog_reset();
         input[i] = uart_getc(UART_SIM);
 
-        if (input[i] == '\n')
-            break;
+        //if (input[i] == '\n')
+        //    break;
         i++;
         if (i == 70)
             break;
@@ -149,9 +165,10 @@ char simxxx_read_time(char command[], int bit_possition)
 
     printf("msj: %s\r\n", input);
 
-    printf("char12: %c\r\n", input[bit_possition]);
+    printf("char%d: %c\r\n", bit_possition, input[bit_possition]);
+    printf("char%d: %c\r\n", bit_possition + 1, input[bit_possition + 1]);
 
-    if (input[bit_possition] != '1')
+    if (input[bit_possition] != '2' && input[bit_possition+1] != '0')
     {
         printf("RETURN_ERROR, msj: %s\r\n",  input);
         return RETURN_ERROR;
@@ -160,26 +177,26 @@ char simxxx_read_time(char command[], int bit_possition)
     printf("RETURN_OK, msj: %s\r\n",  input);
 
     char subbuff[4];
-    memcpy(subbuff, &input[14], 4);
+    memcpy(subbuff, &input[bit_possition], 4);
     mesuaredData.year = atoi(subbuff);
 
-    memcpy(subbuff, &input[18], 2);
+    memcpy(subbuff, &input[bit_possition+4], 2);
     subbuff[2] = '\0';
     mesuaredData.month = atoi(subbuff);
 
-    memcpy(subbuff, &input[20], 2);
+    memcpy(subbuff, &input[bit_possition+6], 2);
     subbuff[2] = '\0';
     mesuaredData.day = atoi(subbuff);
 
-    memcpy(subbuff, &input[22], 2);
+    memcpy(subbuff, &input[bit_possition + 8], 2);
     subbuff[2] = '\0';
     mesuaredData.hour = atoi(subbuff);
 
-    memcpy(subbuff, &input[24], 2);
+    memcpy(subbuff, &input[bit_possition+10], 2);
     subbuff[2] = '\0';
     mesuaredData.minute = atoi(subbuff);
 
-    memcpy(subbuff, &input[26], 2);
+    memcpy(subbuff, &input[bit_possition+12], 2);
     subbuff[2] = '\0';
     mesuaredData.second = atoi(subbuff);
 
@@ -205,6 +222,9 @@ int main()
     char buf[100];
     char filename[] = "test00.txt";
 
+   
+
+
     sensor_temperature_array_1.pin = 16;
     sensor_temperature_array_2.pin = 15;
 
@@ -223,8 +243,8 @@ int main()
 
    
 
-    // Initialize chosen serial port
-    stdio_init_all();
+
+
 
     if (watchdog_caused_reboot())
     {
@@ -238,13 +258,25 @@ int main()
 
     // Set up our UART with the required speed.
     uart_init(UART_SIM, BAUD_RATE);
+    uart_set_hw_flow(UART_SIM, false, false);
+    // Turn off FIFO's - we want to do this character by character
+    //uart_set_fifo_enabled(UART_SIM, false);
+    //int UART_IRQ = UART_SIM == uart0 ? UART0_IRQ : UART1_IRQ;
+
+    // And set up and enable the interrupt handlers
+    //irq_set_enabled(UART_IRQ, true);
+
+    // Initialize chosen serial port
+    stdio_init_all();
+
+   
 
     // Set the TX and RX pins by using the function select on the GPIO
     // Set datasheet for more information on function select
     gpio_set_function(UART_TX_PIN, GPIO_FUNC_UART);
     gpio_set_function(UART_RX_PIN, GPIO_FUNC_UART);
 
-    
+    simxxx_powerUp();
 
     printf("\r\nRushboard Init.\r\n");
 
@@ -278,9 +310,13 @@ int main()
         if(current_State ==State_Init){
             printf("\r\nState INIT\r\n");
 
+            uart_puts(UART_SIM, "AT\r\n");
+            printf("AT\r\n");
+            sleep_ms(500);
+
             simxxx_send_command("AT\r\n", "OK");
             simxxx_send_command("AT\r\n", "OK");
-            simxxx_send_command("AT\r\n", "OK");
+            simxxx_send_command("ATE0\r\n", "OK");
             simxxx_send_command("AT+CGNSPWR=1\r\n", "OK");
             current_State = State_Get_Time;
         }
@@ -289,7 +325,7 @@ int main()
         {
             printf("\r\nState GET TIME\r\n");
             current_State = State_Wait;
-            if(simxxx_read_time("AT+CGNSINF\r\n", 12)){
+            if(simxxx_read_time("AT+CGNSINF\r\n", 16)){
                 current_State = State_Read_Sensors;
             }
                
