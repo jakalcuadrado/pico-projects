@@ -26,12 +26,21 @@ enum State current_State=State_Init;
 
 #include "hardware/uart.h"
 #define UART_SIM uart0
-#define BAUD_RATE 115200
-#define DATA_BITS 8
-#define STOP_BITS 1
-#define PARITY UART_PARITY_NONE
-#define UART_TX_PIN 0
-#define UART_RX_PIN 1
+#define UART_SIM_BAUD_RATE 115200
+#define UART_SIM_DATA_BITS 8
+#define UART_SIM_STOP_BITS 1
+#define UART_SIM_PARITY UART_PARITY_NONE
+#define UART_SIM_TX_PIN 0
+#define UART_SIM_RX_PIN 1
+
+#define UART_LVL uart1
+#define UART_LVL_BAUD_RATE 9600
+#define UART_LVL_DATA_BITS 8
+#define UART_LVL_STOP_BITS 1
+#define UART_LVL_PARITY UART_PARITY_NONE
+#define UART_LVL_TX_PIN 4
+#define UART_LVL_RX_PIN 5
+#define LVL_PIN 2
 
 #include "sd_card.h"
 #include "ff.h"
@@ -54,7 +63,7 @@ uint8_t roms_array_1[40] = {0}; // temperature sensor name.
 uint8_t roms_array_2[40] = {0}; // temperature sensor name.
 
 // Prototype functions
-void Sense_State_Function();
+void temp_sensor_read();
 
 //Global variables
 mesuared_data mesuaredData;
@@ -78,6 +87,7 @@ char simxxx_send_command(char command[], char expected[])
 {
       
     uart_puts(UART_SIM, command);
+    hw_clear_bits(&uart_get_hw(UART_SIM)->rsr, UART_UARTRSR_BITS);
     printf(command);
     // wdt_reset();
     char input[70];
@@ -135,6 +145,8 @@ char simxxx_read_time(char command[], int bit_possition)
 
     // wdt_reset();
     char input[70];
+    // FIFO Rx Clean
+    hw_clear_bits(&uart_get_hw(UART_SIM)->rsr, UART_UARTRSR_BITS);
     uart_puts(UART_SIM, command);
     printf("\r\n");
     printf(command);
@@ -212,6 +224,56 @@ bool repeating_timer_callback(struct repeating_timer *t)
     return true;
 }
 
+void lvl_sensor_read(){
+    //FIFO Rx Clean
+    hw_clear_bits(&uart_get_hw(UART_LVL)->rsr, UART_UARTRSR_BITS);
+    gpio_put(LVL_PIN, true);
+    
+    printf("Reading level sensor\r\n");
+    sleep_ms(100);
+    char input_l[9];
+    char aux_ch='a';
+    int k=0;
+    //gpio_put(LVL_PIN, true);
+   
+
+    while (uart_is_readable(UART_LVL)) 
+    {
+        
+
+        aux_ch = uart_getc(UART_LVL);
+
+        if (aux_ch == 'R')
+            break;
+    }
+
+    while (uart_is_readable(UART_LVL)) 
+    {
+        aux_ch = uart_getc(UART_LVL);
+
+       
+        input_l[k] = aux_ch;
+        k++;
+        if (k == 8)
+            break;
+    }
+
+    gpio_put(LVL_PIN, false);
+    sleep_ms(100);
+    input_l[k]='\0';
+
+    char subbuff[5];
+    subbuff[0] = input_l[0];
+    subbuff[1] = input_l[1];
+    subbuff[2] = input_l[2];
+    subbuff[3] = input_l[3];
+    subbuff[4] = '\0';
+
+    printf("LVL: %s", subbuff);
+    printf("\r\n");
+    mesuaredData.level = atoi(subbuff);
+}
+
 int main()
 {
 
@@ -240,12 +302,6 @@ int main()
     mesuaredData.temperature_array[8] = 0;
     mesuaredData.temperature_array[9] = 0;
 
-
-   
-
-
-
-
     if (watchdog_caused_reboot())
     {
         printf("Rebooted by Watchdog!\n");
@@ -256,25 +312,26 @@ int main()
         printf("Clean boot\n");
     }
 
-    // Set up our UART with the required speed.
-    uart_init(UART_SIM, BAUD_RATE);
+    // Set up our UART_SIM with the required speed.
+    uart_init(UART_SIM, UART_SIM_BAUD_RATE);
     uart_set_hw_flow(UART_SIM, false, false);
-    // Turn off FIFO's - we want to do this character by character
-    //uart_set_fifo_enabled(UART_SIM, false);
-    //int UART_IRQ = UART_SIM == uart0 ? UART0_IRQ : UART1_IRQ;
+    gpio_set_function(UART_SIM_TX_PIN, GPIO_FUNC_UART);
+    gpio_set_function(UART_SIM_RX_PIN, GPIO_FUNC_UART);
 
-    // And set up and enable the interrupt handlers
-    //irq_set_enabled(UART_IRQ, true);
+    // Set up our UART_LVL with the required speed.
+    uart_init(UART_LVL, UART_LVL_BAUD_RATE);
+    uart_set_format(UART_LVL, UART_LVL_DATA_BITS, UART_LVL_STOP_BITS, UART_LVL_PARITY);
+    //uart_set_hw_flow(UART_LVL, false, false);
+    gpio_set_function(UART_LVL_RX_PIN, GPIO_FUNC_UART);
+    //uart_set_fifo_enabled(UART_LVL, false);
 
-    // Initialize chosen serial port
+    gpio_init(LVL_PIN);
+    gpio_set_dir(LVL_PIN, GPIO_OUT);
+    gpio_put(LVL_PIN, false);
+
+    hw_clear_bits(&uart_get_hw(uart1)->rsr, UART_UARTRSR_BITS);
+
     stdio_init_all();
-
-   
-
-    // Set the TX and RX pins by using the function select on the GPIO
-    // Set datasheet for more information on function select
-    gpio_set_function(UART_TX_PIN, GPIO_FUNC_UART);
-    gpio_set_function(UART_RX_PIN, GPIO_FUNC_UART);
 
     simxxx_powerUp();
 
@@ -328,18 +385,25 @@ int main()
             if(simxxx_read_time("AT+CGNSINF\r\n", 16)){
                 current_State = State_Read_Sensors;
             }
-               
-        }
+            printf("Current Time from GSM: %02d/%02d/%04d %02d:%02d:%02d+0\r\n", mesuaredData.day, mesuaredData.month, mesuaredData.year, mesuaredData.hour, mesuaredData.minute, mesuaredData.second);
+           }
 
         if (current_State == State_Read_Sensors)
         {
             printf("\r\nState Read Sensors\r\n");
             uint32_t status=0;
             printf("\r\nState Read Sensors\r\n");
-            //save_and_disable_interrupts();
-            Sense_State_Function();
-            printf("Current Time from GSM: %02d/%02d/%04d %02d:%02d:%02d+0\r\n", mesuaredData.day, mesuaredData.month, mesuaredData.year, mesuaredData.hour, mesuaredData.minute, mesuaredData.second);
-            //restore_interrupts(status);
+            
+            temp_sensor_read();
+            
+            lvl_sensor_read();
+            sleep_ms(100);
+            lvl_sensor_read();
+            sleep_ms(100);
+            lvl_sensor_read();
+            
+
+
             current_State = State_Save_data;
         }
 
@@ -348,7 +412,7 @@ int main()
             printf("\r\nState Save Data\r\n");
             cancel_repeating_timer(&timer_sampling);
 
-            sprintf(payload, "{\"date\":\"%02d/%02d/%04d %02d:%02d:%02d\",\"level\":%d,\"%02X\":%d,\"%02X\":%d,\"%02X\":%d,\"%02X\":%d,\"%02X\":%d,\"%02X\":%d,\"%02X\":%d,\"%02X\":%d,\"%02X\":%d,\"%02X\":%d}\r\n",
+            sprintf(payload, "{\"date\":\"%02d/%02d/%04d %02d:%02d:%02d\",\"level\":%04d,\"%02X\":%d,\"%02X\":%d,\"%02X\":%d,\"%02X\":%d,\"%02X\":%d,\"%02X\":%d,\"%02X\":%d,\"%02X\":%d,\"%02X\":%d,\"%02X\":%d}\r\n",
                     mesuaredData.day, mesuaredData.month, mesuaredData.year, mesuaredData.hour, mesuaredData.minute, mesuaredData.second,
                     mesuaredData.level,
                     mesuaredData.temperature_sensor_id[0],
@@ -434,8 +498,11 @@ int main()
         
 }
 
-void Sense_State_Function()
+void temp_sensor_read()
 {
+
+    printf("Reading Temperature Array\r\n");
+
     float voltage, current;
     int16_t *result_ptr = mesuaredData.temperature_array;
     uint8_t error = 1;
