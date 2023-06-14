@@ -68,6 +68,7 @@ void temp_sensor_read();
 //Global variables
 mesuared_data mesuaredData;
 char payload[150];
+int get_time_trys=5;
 
 void simxxx_powerUp()
 {
@@ -382,14 +383,20 @@ int main()
         {
             printf("\r\nState GET TIME\r\n");
             current_State = State_Wait;
-            if(simxxx_read_time("AT+CGNSINF\r\n", 16)){
+
+            printf("try: %d\r\n",get_time_trys);
+
+            if(simxxx_read_time("AT+CGNSINF\r\n", 16) ||  get_time_trys==0){
                 current_State = State_Read_Sensors;
+                
             }
+            get_time_trys--;
             printf("Current Time from GSM: %02d/%02d/%04d %02d:%02d:%02d+0\r\n", mesuaredData.day, mesuaredData.month, mesuaredData.year, mesuaredData.hour, mesuaredData.minute, mesuaredData.second);
            }
 
         if (current_State == State_Read_Sensors)
         {
+            get_time_trys=5;
             printf("\r\nState Read Sensors\r\n");
             uint32_t status=0;
             printf("\r\nState Read Sensors\r\n");
